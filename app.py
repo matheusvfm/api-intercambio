@@ -1,88 +1,104 @@
-"""Importa as funções do banco de dados"""
 import sqlite3
-#import json
 from flask import Flask, request, jsonify
 
-app = Flask(__name__)
+class BancoDeDados:
+    def __init__(self, nome_banco):
+        self.nome_banco = nome_banco
 
-def db_connection():
-    """Connect to database"""
-    conn = None
-    try:
-        conn = sqlite3.connect("intercambio.sqlite")
-    except sqlite3.error:
-        print("Falha na conexão com o sqlite.")
-    return conn
+    def conectar(self):
+        try:
+            conn = sqlite3.connect(self.nome_banco)
+            return conn
+        except sqlite3.Error as e:
+            print("Falha na conexão com o SQLite.")
+            return None
 
-@app.route('/alunos',methods=['GET', 'POST'])
-def alunos_geral():
-    """Consultar(todos)/Criar aluno(s)"""
-    conn = db_connection()
-    cursor = conn.cursor()
+class Aluno:
+    def __init__(self, conn):
+        self.conn = conn
 
-    if request.method == 'GET':
-        cursor = conn.execute("SELECT * FROM alunos")
+    def listar_alunos(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alunos")
         alunos = [
             dict(id=row[0], nome=row[1], origem=row[2], destino=row[3])
             for row in cursor.fetchall()
         ]
-        if alunos is not None:
-            return jsonify(alunos)
+        return alunos
+
+    def criar_aluno(self, nome, origem, destino):
+        cursor = self.conn.cursor()
+        sql = """INSERT INTO alunos (nome, origem, destino) VALUES (?, ?, ?)"""
+        cursor.execute(sql, (nome, origem, destino))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def buscar_aluno(self, id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alunos WHERE id=?", (id,))
+        aluno = cursor.fetchone()
+        if aluno:
+            return dict(id=aluno[0], nome=aluno[1], origem=aluno[2], destino=aluno[3])
+        else:
+            return None
+
+    def atualizar_aluno(self, id, nome, origem, destino):
+        cursor = self.conn.cursor()
+        sql = """UPDATE alunos
+                 SET nome=?, origem=?, destino=?
+                 WHERE id=? """
+        cursor.execute(sql, (nome, origem, destino, id))
+        self.conn.commit()
+        return dict(id=id, nome=nome, origem=origem, destino=destino)
+
+    def deletar_aluno(self, id):
+        cursor = self.conn.cursor()
+        sql = """DELETE FROM alunos WHERE id=?"""
+        cursor.execute(sql, (id,))
+        self.conn.commit()
+        return f"O aluno com id: {id} foi deletado com sucesso."
+
+app = Flask(__name__)
+
+@app.route('/alunos', methods=['GET', 'POST'])
+def alunos_geral():
+    banco = BancoDeDados("intercambio.sqlite")
+    conn = banco.conectar()
+    aluno = Aluno(conn)
+
+    if request.method == 'GET':
+        alunos = aluno.listar_alunos()
+        return jsonify(alunos)
 
     if request.method == 'POST':
         new_name = request.form['nome']
         new_origin = request.form['origem']
-        new_destinination = request.form['destino']
-        sql = """INSERT INTO alunos (nome, origem, destino)
-                 VALUES (?, ?, ?)"""
-        cursor = cursor.execute(sql, (new_name, new_origin, new_destinination))
-        conn.commit()
-        return f"Aluno com o id: {cursor.lastrowid} criado com sucesso"
-    return None
+        new_destination = request.form['destino']
+        aluno_id = aluno.criar_aluno(new_name, new_origin, new_destination)
+        return f"Aluno com o id: {aluno_id} criado com sucesso"
 
-# Consultar/Editar/Excluir(id)
-@app.route('/aluno/<int:id>',methods=['GET', 'PUT', 'DELETE'])
-
+@app.route('/aluno/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 def aluno_por_id(id):
-    """Busca, edita, exclui aluno por id"""
-    conn = db_connection()
-    cursor = conn.cursor()
-    aluno = None
+    banco = BancoDeDados("intercambio.sqlite")
+    conn = banco.conectar()
+    aluno = Aluno(conn)
 
     if request.method == 'GET':
-        cursor.execute("SELECT * FROM alunos where id=?", (id,))
-        rows = cursor.fetchall()
-        for row in rows:
-            aluno = row
-        if aluno is not None:
-            return jsonify(aluno), 200
+        aluno_info = aluno.buscar_aluno(id)
+        if aluno_info:
+            return jsonify(aluno_info), 200
         return "Algo deu errado", 404
 
     if request.method == 'PUT':
-        sql = """UPDATE alunos
-                SET nome=?,
-                    origem=?,
-                    destino=?
-                where id=? """
-
         nome = request.form['nome']
         origem = request.form['origem']
         destino = request.form['destino']
-        aluno_atualizado = {
-                'id': id,
-                'nome': nome,
-                'origem': origem,
-                'destino': destino,
-        }
-        conn.execute(sql, (nome,  origem, destino, id))
-        conn.commit()
+        aluno_atualizado = aluno.atualizar_aluno(id, nome, origem, destino)
         return jsonify(aluno_atualizado)
 
     if request.method == 'DELETE':
-        sql = """ DELETE FROM alunos where id=? """
-        conn.execute(sql, (id,))
-        conn.commit()
-        return f"O aluno com id: {id} foi deletado com sucesso.",200
-    return None
+        result = aluno.deletar_aluno(id)
+        return result, 200
 
-app.run(port=5000,host='localhost',debug=True)
+if __name__ == '__main__':
+    app.run(port=5000, host='localhost', debug=True)
