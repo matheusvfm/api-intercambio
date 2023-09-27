@@ -1,5 +1,11 @@
 import sqlite3
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
+
+app = Flask(__name__)
+
+def is_valid_string(value):
+    """Verifica se a string contém apenas letras."""
+    return all(c.isalpha() or c.isspace() for c in value)
 
 class BancoDeDados:
     def __init__(self, nome_banco):
@@ -27,6 +33,9 @@ class Aluno:
         return alunos
 
     def criar_aluno(self, nome, origem, destino):
+        if not (is_valid_string(nome) and is_valid_string(origem) and is_valid_string(destino)):
+            abort(400, "Os campos devem conter apenas letras.")
+
         cursor = self.conn.cursor()
         sql = """INSERT INTO alunos (nome, origem, destino) VALUES (?, ?, ?)"""
         cursor.execute(sql, (nome, origem, destino))
@@ -40,10 +49,17 @@ class Aluno:
         if aluno:
             return dict(id=aluno[0], nome=aluno[1], origem=aluno[2], destino=aluno[3])
         else:
-            return None
+            abort(404, "Aluno não encontrado.")
 
     def atualizar_aluno(self, id, nome, origem, destino):
+        if not (is_valid_string(nome) and is_valid_string(origem) and is_valid_string(destino)):
+            abort(400, "Os campos devem conter apenas letras.")
+
         cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alunos WHERE id=?", (id,))
+        if not cursor.fetchone():
+            abort(404, "Aluno não encontrado.")
+
         sql = """UPDATE alunos
                  SET nome=?, origem=?, destino=?
                  WHERE id=? """
@@ -53,12 +69,14 @@ class Aluno:
 
     def deletar_aluno(self, id):
         cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM alunos WHERE id=?", (id,))
+        if not cursor.fetchone():
+            abort(404, "Aluno não encontrado.")
+
         sql = """DELETE FROM alunos WHERE id=?"""
         cursor.execute(sql, (id,))
         self.conn.commit()
         return f"O aluno com id: {id} foi deletado com sucesso."
-
-app = Flask(__name__)
 
 @app.route('/alunos', methods=['GET', 'POST'])
 def alunos_geral():
@@ -74,6 +92,10 @@ def alunos_geral():
         new_name = request.form['nome']
         new_origin = request.form['origem']
         new_destination = request.form['destino']
+
+        if not (is_valid_string(new_name) and is_valid_string(new_origin) and is_valid_string(new_destination)):
+            return abort(400, "Os campos devem conter apenas letras.")
+
         aluno_id = aluno.criar_aluno(new_name, new_origin, new_destination)
         return f"Aluno com o id: {aluno_id} criado com sucesso"
 
@@ -85,14 +107,16 @@ def aluno_por_id(id):
 
     if request.method == 'GET':
         aluno_info = aluno.buscar_aluno(id)
-        if aluno_info:
-            return jsonify(aluno_info), 200
-        return "Algo deu errado", 404
+        return jsonify(aluno_info), 200
 
     if request.method == 'PUT':
         nome = request.form['nome']
         origem = request.form['origem']
         destino = request.form['destino']
+
+        if not (is_valid_string(nome) and is_valid_string(origem) and is_valid_string(destino)):
+            abort(400, "Os campos devem conter apenas letras.")
+
         aluno_atualizado = aluno.atualizar_aluno(id, nome, origem, destino)
         return jsonify(aluno_atualizado)
 
