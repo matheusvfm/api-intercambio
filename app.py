@@ -93,6 +93,9 @@ def alunos_geral():
         new_origin = request.form['origem']
         new_destination = request.form['destino']
 
+        if not (new_name.strip() and new_origin.strip() and new_destination.strip()):
+            abort(400, "Os campos não podem estar em branco.")
+
         if not (is_valid_string(new_name) and is_valid_string(new_origin) and is_valid_string(new_destination)):
             return abort(400, "Os campos devem conter apenas letras.")
 
@@ -114,13 +117,22 @@ def aluno_por_id(id):
         origem = request.form['origem']
         destino = request.form['destino']
 
+        if id is None:
+            abort(400, "Digite o ID específico para que a informação do aluno seja alterada.")
+
+        if not (nome.strip() and origem.strip() and destino.strip()):
+            abort(400, "Os campos não podem estar em branco.")
+
         if not (is_valid_string(nome) and is_valid_string(origem) and is_valid_string(destino)):
-            abort(400, "Os campos devem conter apenas letras.")
+            abort(400, "Os campos devem conter apenas letras.") 
 
         aluno_atualizado = aluno.atualizar_aluno(id, nome, origem, destino)
         return jsonify(aluno_atualizado)
 
     if request.method == 'DELETE':
+        if id is None:
+            abort(400, "Digite o ID específico para que a informação do aluno seja alterada.")
+
         result = aluno.deletar_aluno(id)
         return result, 200
 
